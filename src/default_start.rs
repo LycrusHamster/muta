@@ -156,12 +156,14 @@ pub async fn start<Mapping: 'static + ServiceMapping>(
         network_service.handle(),
         Arc::clone(&storage),
         config.mempool.timeout_gap,
+        chain_id.clone(),
         config.mempool.broadcast_txs_size,
         config.mempool.broadcast_txs_interval,
     );
     let mempool = Arc::new(HashMemPool::new(
         config.mempool.pool_size as usize,
         config.mempool.timeout_gap,
+        current_epoch.header.epoch_id,
         mempool_adapter,
     ));
 

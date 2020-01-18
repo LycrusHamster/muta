@@ -14,6 +14,7 @@ pub use adapter::DefaultMemPoolAdapter;
 pub use adapter::{DEFAULT_BROADCAST_TXS_INTERVAL, DEFAULT_BROADCAST_TXS_SIZE};
 
 use std::error::Error;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use async_trait::async_trait;
 use derive_more::Display;
@@ -29,29 +30,37 @@ use crate::tx_cache::TxCache;
 /// Memory pool for caching transactions.
 pub struct HashMemPool<Adapter: MemPoolAdapter> {
     /// Pool size limit.
-    pool_size:      usize,
+    pool_size: usize,
     /// A system param limits the life time of an off-chain transaction.
-    timeout_gap:    u64,
+    timeout_gap: u64,
     /// A structure for caching new transactions and responsible transactions of
     /// propose-sync.
-    tx_cache:       TxCache,
+    tx_cache: TxCache,
     /// A structure for caching fresh transactions in order transaction hashes.
     callback_cache: Map<SignedTransaction>,
     /// Supply necessary functions from outer modules.
-    adapter:        Adapter,
+    adapter: Adapter,
+
+    latest_epoch_id: AtomicU64,
 }
 
 impl<Adapter> HashMemPool<Adapter>
 where
     Adapter: MemPoolAdapter,
 {
-    pub fn new(pool_size: usize, timeout_gap: u64, adapter: Adapter) -> Self {
+    pub fn new(
+        pool_size: usize,
+        timeout_gap: u64,
+        current_epoch_id: u64,
+        adapter: Adapter,
+    ) -> Self {
         HashMemPool {
             pool_size,
             timeout_gap,
             tx_cache: TxCache::new(pool_size * 2),
             callback_cache: Map::new(pool_size),
             adapter,
+            latest_epoch_id: AtomicU64::new(current_epoch_id),
         }
     }
 
@@ -82,7 +91,11 @@ where
             .check_signature(ctx.clone(), tx.clone())
             .await?;
         self.adapter
-            .check_transaction(ctx.clone(), tx.clone())
+            .check_transaction(
+                ctx.clone(),
+                self.latest_epoch_id.load(Ordering::SeqCst),
+                tx.clone(),
+            )
             .await?;
         self.adapter
             .check_storage_exist(ctx.clone(), tx_hash.clone())
@@ -109,6 +122,7 @@ where
     async fn flush(&self, _ctx: Context, tx_hashes: Vec<Hash>) -> ProtocolResult<()> {
         self.tx_cache.flush(&tx_hashes);
         self.callback_cache.clear();
+        self.latest_epoch_id.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
 

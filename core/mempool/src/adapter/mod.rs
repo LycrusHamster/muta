@@ -135,6 +135,7 @@ pub struct DefaultMemPoolAdapter<C, N, S> {
     storage: Arc<S>,
 
     timeout_gap: AtomicU64,
+    chain_id:    Hash,
 
     stx_tx: UnboundedSender<SignedTransaction>,
     err_rx: Mutex<UnboundedReceiver<ProtocolError>>,
@@ -152,6 +153,7 @@ where
         network: N,
         storage: Arc<S>,
         timeout_gap: u64,
+        chain_id: Hash,
         broadcast_txs_size: usize,
         broadcast_txs_interval: u64,
     ) -> Self {
@@ -177,6 +179,7 @@ where
             storage,
 
             timeout_gap: AtomicU64::new(timeout_gap),
+            chain_id,
 
             stx_tx,
             err_rx: Mutex::new(err_rx),
@@ -240,7 +243,12 @@ where
     // TODO: Verify Fee?
     // TODO: Verify Nonce?
     // TODO: Cycle limit?
-    async fn check_transaction(&self, _ctx: Context, stx: SignedTransaction) -> ProtocolResult<()> {
+    async fn check_transaction(
+        &self,
+        _ctx: Context,
+        latest_epoch_id: u64,
+        stx: SignedTransaction,
+    ) -> ProtocolResult<()> {
         // Verify transaction hash
         let fixed_bytes = stx.raw.encode_fixed()?;
         let tx_hash = Hash::digest(fixed_bytes);
@@ -255,8 +263,7 @@ where
         }
 
         // Verify chain id
-        let latest_epoch = self.storage.get_latest_epoch().await?;
-        if latest_epoch.header.chain_id != stx.raw.chain_id {
+        if self.chain_id != stx.raw.chain_id {
             let wrong_chain_id = MemPoolError::WrongChain {
                 tx_hash: stx.tx_hash,
             };
@@ -265,7 +272,6 @@ where
         }
 
         // Verify timeout
-        let latest_epoch_id = latest_epoch.header.epoch_id;
         let timeout_gap = self.timeout_gap.load(Ordering::SeqCst);
 
         if stx.raw.timeout > latest_epoch_id + timeout_gap {
