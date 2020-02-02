@@ -66,7 +66,7 @@ docker-push:
 
 e2e-test:
 	@echo "-----------------------------------------------------------------"
-	@echo "run the commands below in another window first:                  "
+	@echo "run te commands below in another window first:                  "
 	@echo "                                                                 "
 	@echo "rm -rf ./target/tests/e2e/data && \                              "
 	@echo "RUST_LOG=info,overlord=warn cargo run -- -c tests/e2e/config.toml"
