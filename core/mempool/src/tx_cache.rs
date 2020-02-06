@@ -152,6 +152,8 @@ impl TxCache {
     }
 
     pub fn insert_propose_tx(&self, signed_tx: SignedTransaction) -> ProtocolResult<()> {
+        log::warn!("[mempool]: insert propose tx hash {:?}", signed_tx.tx_hash);
+
         let tx_hash = signed_tx.tx_hash.clone();
         let tx_wrapper = TxWrapper::propose(signed_tx);
         let shared_tx = Arc::new(tx_wrapper);
@@ -169,6 +171,7 @@ impl TxCache {
         for tx_hash in tx_hashes {
             let opt = self.map.get(tx_hash);
             if let Some(shared_tx) = opt {
+                log::warn!("[memoppl]: set removed tx hash {:?}", tx_hash);
                 shared_tx.set_removed();
             }
         }
@@ -202,6 +205,8 @@ impl TxCache {
                     timeout_tx_hashes.push(tx_hash.clone());
                     continue;
                 }
+
+                log::warn!("[mempool]: package tx hash {:?}", tx_hash);
                 // After previous filter, tx are valid and should cache in temp_queue.
                 queue_role
                     .candidate
@@ -307,6 +312,7 @@ impl TxCache {
             self.map.remove(&tx_hash);
             Err(MemPoolError::Insert { tx_hash }.into())
         } else {
+            log::warn!("[memoppl]: insert tx hash {:?}", tx_hash);
             Ok(())
         }
     }
