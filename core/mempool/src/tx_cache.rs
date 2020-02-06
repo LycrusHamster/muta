@@ -171,7 +171,7 @@ impl TxCache {
         for tx_hash in tx_hashes {
             let opt = self.map.get(tx_hash);
             if let Some(shared_tx) = opt {
-                log::warn!("[memoppl]: set removed tx hash {:?}", tx_hash);
+                log::warn!("[mempool]: set removed tx hash {:?}", tx_hash);
                 shared_tx.set_removed();
             }
         }
