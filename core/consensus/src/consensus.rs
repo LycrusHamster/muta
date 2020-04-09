@@ -18,6 +18,7 @@ use crate::status::StatusAgent;
 use crate::util::OverlordCrypto;
 use crate::wal::SignedTxsWAL;
 use crate::{ConsensusError, ConsensusType};
+use overlord::record::RRConfig;
 
 /// Provide consensus
 pub struct OverlordConsensus<Adapter: ConsensusAdapter + 'static> {
@@ -127,9 +128,10 @@ impl<Adapter: ConsensusAdapter + 'static> OverlordConsensus<Adapter> {
         interval: u64,
         authority_list: Vec<Node>,
         timer_config: Option<DurationConfig>,
+        rr_config: RRConfig,
     ) -> ProtocolResult<()> {
         self.inner
-            .run(interval, authority_list, timer_config)
+            .run(interval, authority_list, timer_config, rr_config)
             .await
             .map_err(|e| ConsensusError::OverlordErr(Box::new(e)))?;
 

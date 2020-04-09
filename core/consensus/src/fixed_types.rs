@@ -65,7 +65,7 @@ impl MessageCodec for ConsensusRpcResponse {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FixedPill {
     pub inner: Pill,
 }

@@ -27,7 +27,7 @@ pub use crate::adapter::OverlordConsensusAdapter;
 pub use crate::consensus::OverlordConsensus;
 pub use crate::synchronization::{OverlordSynchronization, RichBlock};
 pub use crate::wal::SignedTxsWAL;
-pub use overlord::{types::Node, DurationConfig};
+pub use overlord::{record, types::Node, DurationConfig};
 
 #[derive(Clone, Debug, Display, PartialEq, Eq)]
 pub enum ConsensusType {

@@ -116,6 +116,21 @@ impl Default for ConfigLogger {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct ConfigRR {
+    pub mode:       String,
+    pub trace_path: PathBuf,
+}
+
+impl Default for ConfigRR {
+    fn default() -> Self {
+        Self {
+            mode:       "Inactivated".to_string(),
+            trace_path: PathBuf::new(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
 pub struct Config {
     // crypto
     pub privkey:   Hex,
@@ -132,6 +147,8 @@ pub struct Config {
     pub logger:    ConfigLogger,
     #[serde(default)]
     pub rocksdb:   ConfigRocksDB,
+    #[serde(default)]
+    pub rr:        ConfigRR,
 }
 
 impl Config {

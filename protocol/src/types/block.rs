@@ -3,13 +3,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::types::{Address, Bloom, Hash, MerkleRoot};
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Block {
     pub header:            BlockHeader,
     pub ordered_tx_hashes: Vec<Hash>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BlockHeader {
     pub chain_id:          Hash,
     pub height:            u64,
@@ -44,7 +44,7 @@ pub struct Validator {
     pub vote_weight:    u32,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Pill {
     pub block:          Block,
     pub propose_hashes: Vec<Hash>,

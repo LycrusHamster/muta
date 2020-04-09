@@ -43,6 +43,7 @@ use protocol::{fixed_codec::FixedCodec, ProtocolResult};
 
 use crate::config::Config;
 use crate::MainError;
+use core_consensus::record::RRConfig;
 
 pub async fn create_genesis<Mapping: 'static + ServiceMapping>(
     config: &Config,
@@ -473,9 +474,19 @@ pub async fn start<Mapping: 'static + ServiceMapping>(
         brake_ratio:     metadata.brake_ratio,
     };
 
+    let rr_config = RRConfig {
+        mode:       config.rr.mode.clone(),
+        trace_path: config.rr.trace_path.clone(),
+    };
+
     tokio::spawn(async move {
         if let Err(e) = overlord_consensus
-            .run(consensus_interval, authority_list, Some(timer_config))
+            .run(
+                consensus_interval,
+                authority_list,
+                Some(timer_config),
+                rr_config,
+            )
             .await
         {
             log::error!("muta-consensus: {:?} error", e);
