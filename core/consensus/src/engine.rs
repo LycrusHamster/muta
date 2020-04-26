@@ -371,17 +371,29 @@ impl<Adapter: ConsensusAdapter + 'static> Engine<FixedPill> for ConsensusEngine<
     ) -> Result<(), Box<dyn Error + Send>> {
         let (end, msg) = match msg {
             OverlordMsg::SignedProposal(sp) => {
+                log::info!("broadcast SignedProposal, data: {:?}", sp);
                 let bytes = sp.rlp_bytes();
+                log::info!(
+                    "broadcast SignedProposal, rlp:{}",
+                    hex::encode(bytes.clone())
+                );
                 (END_GOSSIP_SIGNED_PROPOSAL, bytes)
             }
 
             OverlordMsg::AggregatedVote(av) => {
+                log::info!("broadcast AggregatedVote, data: {:?}", av);
                 let bytes = av.rlp_bytes();
+                log::info!(
+                    "broadcast AggregatedVote, rlp:{}",
+                    hex::encode(bytes.clone())
+                );
                 (END_GOSSIP_AGGREGATED_VOTE, bytes)
             }
 
             OverlordMsg::SignedChoke(sc) => {
+                log::info!("broadcast SignedChoke, data: {:?}", sc);
                 let bytes = sc.rlp_bytes();
+                log::info!("broadcast SignedChoke, rlp:{}", hex::encode(bytes.clone()));
                 (END_GOSSIP_SIGNED_CHOKE, bytes)
             }
 
@@ -403,7 +415,9 @@ impl<Adapter: ConsensusAdapter + 'static> Engine<FixedPill> for ConsensusEngine<
     ) -> Result<(), Box<dyn Error + Send>> {
         match msg {
             OverlordMsg::SignedVote(sv) => {
+                log::info!("transmit SignedVote, data: {:?}", sv);
                 let msg = sv.rlp_bytes();
+                log::info!("transmit SignedVote, rlp: {}", hex::encode(msg.clone()));
                 self.adapter
                     .transmit(
                         ctx,
@@ -414,7 +428,9 @@ impl<Adapter: ConsensusAdapter + 'static> Engine<FixedPill> for ConsensusEngine<
                     .await?;
             }
             OverlordMsg::AggregatedVote(av) => {
+                log::info!("transmit AggregatedVote, data: {:?}", av);
                 let msg = av.rlp_bytes();
+                log::info!("transmit AggregatedVote, rlp:{}", hex::encode(msg.clone()));
                 self.adapter
                     .transmit(
                         ctx,

@@ -80,6 +80,10 @@ where
         M: MessageCodec,
     {
         let msg = self.package_message(cx.clone(), end, msg).await?;
+        log::info!(
+            "broadcast, packaged message :{}",
+            hex::encode(msg.clone().as_ref())
+        );
         self.send(cx, TargetSession::All, msg, p)?;
 
         Ok(())
@@ -97,6 +101,10 @@ where
         M: MessageCodec,
     {
         let msg = self.package_message(cx.clone(), end, msg).await?;
+        log::info!(
+            "user_cast, packaged message :{}",
+            hex::encode(msg.clone().as_ref())
+        );
         self.users_send(cx, users, msg, p).await?;
 
         Ok(())
