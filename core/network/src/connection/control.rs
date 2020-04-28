@@ -2,6 +2,7 @@ use std::{io, marker::PhantomData};
 
 use async_trait::async_trait;
 use futures::channel::mpsc::UnboundedSender;
+use hex;
 use log::error;
 use protocol::{traits::Priority, types::Address, Bytes};
 use tentacle::{
@@ -115,8 +116,14 @@ where
         };
 
         let ret = match pri {
-            Priority::High => self.inner.quick_filter_broadcast(tar, proto_id, msg),
-            Priority::Normal => self.inner.filter_broadcast(tar, proto_id, msg),
+            Priority::High => {
+                log::info!("MessageSender, High, {}", hex::encode(msg.as_ref()));
+                self.inner.quick_filter_broadcast(tar, proto_id, msg)
+            }
+            Priority::Normal => {
+                log::info!("MessageSender, Normal, {}", hex::encode(msg.as_ref()));
+                self.inner.filter_broadcast(tar, proto_id, msg)
+            }
         };
 
         let ret = ret.map_err(|err| match &err {

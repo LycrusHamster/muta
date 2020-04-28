@@ -28,10 +28,10 @@ snap = "0.2"
 #tentacle-ping = { git = "https://github.com/zeroqn/p2p", branch = "muta-disc", features = [ "flatc" ]}
 #tentacle-discovery = { git = "https://github.com/zeroqn/p2p", branch = "muta-disc", features = [ "flatc" ]}
 #tentacle-identify = { git = "https://github.com/zeroqn/p2p", branch = "muta-disc", features = [ "flatc" ]}
-tentacle = { git = "https://github.com/LycrusHamster/p2p", rev = "01dd6cbf", features = [ "flatc" ]}
-tentacle-ping = { git = "https://github.com/LycrusHamster/p2p", rev = "01dd6cbf", features = [ "flatc" ]}
-tentacle-discovery = { git = "https://github.com/LycrusHamster/p2p", rev = "01dd6cbf", features = [ "flatc" ]}
-tentacle-identify = { git = "https://github.com/LycrusHamster/p2p", rev = "01dd6cbf", features = [ "flatc" ]}
+tentacle = { git = "https://github.com/LycrusHamster/p2p", rev = "09f6565d", features = [ "flatc" ]}
+tentacle-ping = { git = "https://github.com/LycrusHamster/p2p", rev = "09f6565d", features = [ "flatc" ]}
+tentacle-discovery = { git = "https://github.com/LycrusHamster/p2p", rev = "09f6565d", features = [ "flatc" ]}
+tentacle-identify = { git = "https://github.com/LycrusHamster/p2p", rev = "09f6565d", features = [ "flatc" ]}
 
 tokio = { version = "0.2", features = ["macros", "rt-core"]}
 hostname = "0.3"
