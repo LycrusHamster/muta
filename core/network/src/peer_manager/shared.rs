@@ -6,8 +6,8 @@ use parking_lot::RwLock;
 use protocol::types::Address;
 use tentacle::{secio::PeerId, SessionId};
 
+use hex;
 use std::{collections::HashSet, sync::Arc};
-
 pub struct SharedSessionsConfig {
     pub max_stream_window_size: usize,
     pub write_timeout:          u64,
@@ -85,6 +85,11 @@ impl SessionBook for SharedSessions {
                 } else {
                     unconnected.push(addr);
                 }
+            } else {
+                log::info!(
+                    "SharedSessions, by_chain, chain doesn't find {}",
+                    hex::encode(addr.as_bytes().as_ref())
+                )
             }
         }
 

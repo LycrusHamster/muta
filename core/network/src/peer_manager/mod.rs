@@ -8,6 +8,7 @@ mod shared;
 mod time;
 
 use addr_set::PeerAddrSet;
+use hex;
 use peer::Peer;
 use retry::Retry;
 use save_restore::{NoPeerDatFile, PeerDatFile, SaveRestore};
@@ -416,6 +417,10 @@ impl Inner {
     pub fn add_peer(&self, peer: ArcPeer) {
         self.peers.write().insert(peer.clone());
         if let Some(chain_addr) = peer.owned_chain_addr() {
+            log::info!(
+                "SharedSessions-inner, add_peer, inserting: {}",
+                hex::encode(chain_addr.as_bytes().as_ref())
+            );
             self.chain.write().insert(chain_addr, peer);
         }
     }
@@ -447,6 +452,10 @@ impl Inner {
     pub fn remove_peer(&self, peer_id: &PeerId) -> Option<ArcPeer> {
         let opt_peer = { self.peers.write().take(peer_id) };
         if let Some(chain_addr) = opt_peer.and_then(|p| p.owned_chain_addr()) {
+            log::info!(
+                "SharedSessions-inner, remove_peer, removing: {}",
+                hex::encode(chain_addr.as_bytes().as_ref())
+            );
             self.chain.write().remove(&chain_addr)
         } else {
             None
@@ -523,6 +532,14 @@ impl Inner {
             .collect();
 
         self.peers.write().extend(peers);
+
+        chain_peers.iter().for_each(|arg| {
+            log::info!(
+                "SharedSessions-inner, restore_peer, restoring: {}",
+                hex::encode(arg.0.as_bytes().as_ref())
+            );
+        });
+
         self.chain.write().extend(chain_peers);
     }
 }

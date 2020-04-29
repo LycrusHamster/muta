@@ -48,6 +48,10 @@ impl<P: NetworkProtocol, B: SessionBook> ConnectionServiceControl<P, B> {
         self.sessions.refresh_blocked();
 
         let all_blocked = self.sessions.all_blocked();
+
+        log::info!("filter_blocked, all_blocked: {:?}", all_blocked);
+        log::info!("filter_blocked, tar: {:?}", tar);
+
         if all_blocked.is_empty() {
             return (Some(tar), None);
         }
@@ -61,8 +65,13 @@ impl<P: NetworkProtocol, B: SessionBook> ConnectionServiceControl<P, B> {
                 }
             }
             TargetSession::Multi(sids) => {
+                log::info!("filter_blocked, sids: {:?}", sids);
+
                 let (sendable, blocked): (Vec<SessionId>, Vec<SessionId>) =
                     sids.into_iter().partition(|sid| !all_blocked.contains(sid));
+
+                log::info!("filter_blocked, sendable: {:?}", sendable);
+                log::info!("filter_blocked, blocked: {:?}", blocked);
 
                 if sendable.is_empty() && blocked.is_empty() {
                     unreachable!()
@@ -114,6 +123,24 @@ where
             }
             (Some(tar), opt_blocked) => (tar, opt_blocked),
         };
+        log::info!(
+            "MessageSender, tar: {:?}, opt_blocked: {:?}",
+            tar,
+            opt_blocked
+        );
+        match tar.clone() {
+            TargetSession::Multi(sessions) => {
+                if sessions.is_empty() {
+                    log::error!("MessageSender, Multi, target is empty !!");
+                    log::error!("MessageSender, Multi, target: {:?}", sessions);
+                    log::error!(
+                        "MessageSender, Multi, opt_blocked: {:?}",
+                        opt_blocked.clone()
+                    )
+                }
+            }
+            _ => {}
+        }
 
         let ret = match pri {
             Priority::High => {
@@ -153,6 +180,12 @@ where
         pri: Priority,
     ) -> Result<(), NetworkError> {
         let (connected, unconnected) = self.sessions.by_chain(chain_addrs.clone());
+        log::info!(
+            "users_send, connected: {:?}, unconnected: {:?}",
+            connected,
+            unconnected
+        );
+        log::info!("users_send, data: {}", hex::encode(msg.as_ref()));
         let send_ret = self.send(TargetSession::Multi(connected), msg, pri);
 
         let whitelist_peers = PeerManagerEvent::WhitelistPeersByChainAddr { chain_addrs };
