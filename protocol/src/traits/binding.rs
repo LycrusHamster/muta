@@ -55,6 +55,9 @@ pub trait ServiceState {
     // Move data from cache to stash
     fn stash(&mut self) -> ProtocolResult<()>;
 
+    // Roll back all data in the stash
+    fn revert_stash(&mut self) -> ProtocolResult<()>;
+
     // Persist data from stash into MPT
     fn commit(&mut self) -> ProtocolResult<MerkleRoot>;
 }

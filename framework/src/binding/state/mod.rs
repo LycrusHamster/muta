@@ -116,6 +116,12 @@ impl<DB: TrieDB> ServiceState for GeneralServiceState<DB> {
         Ok(())
     }
 
+    // Roll back all data in the stash
+    fn revert_stash(&mut self) -> ProtocolResult<()> {
+        self.stash_map.clear();
+        Ok(())
+    }
+
     // Persist data from stash into MPT
     fn commit(&mut self) -> ProtocolResult<MerkleRoot> {
         for (key, value) in self.stash_map.drain() {

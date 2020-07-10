@@ -111,6 +111,12 @@ impl CurrentConsensusStatus {
         log::info!("update_by_executed: info {}", info,);
         log::info!("update_by_executed: current status {}", self);
 
+        log::error!(
+            "*** exec_height:{} ,CurrentConsensusStatus.exec_height:{} ",
+            info.exec_height,
+            self.exec_height
+        );
+
         assert!(info.exec_height == self.exec_height + 1);
         self.exec_height += 1;
         self.list_cycles_used.push(info.cycles_used);

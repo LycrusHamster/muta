@@ -2,6 +2,10 @@ mod factory;
 #[cfg(test)]
 mod tests;
 
+mod error;
+
+pub use error::ExecutorError;
+
 pub use factory::ServiceExecutorFactory;
 
 use std::{
@@ -93,6 +97,14 @@ impl<DB: TrieDB> ServiceStateMap<DB> {
 
         Ok(())
     }
+
+    fn revert_stash(&self) -> ProtocolResult<()> {
+        for state in self.0.values() {
+            state.borrow_mut().revert_stash()?;
+        }
+
+        Ok(())
+    }
 }
 
 struct CommitHooks<DB: TrieDB> {
@@ -139,6 +151,10 @@ impl<DB: TrieDB> TxHooks for CommitHooks<DB> {
         for hook in self.inner.iter_mut() {
             Self::kan(service_context.clone(), Rc::clone(&self.states), || {
                 hook.tx_hook_before_(service_context.clone())
+            })
+            .map_err(|e| {
+                log::error!("executor: tx_before_hook_err {}", e);
+                ProtocolError::from(ExecutorError::TxBefore)
             })?;
         }
 
@@ -149,6 +165,10 @@ impl<DB: TrieDB> TxHooks for CommitHooks<DB> {
         for hook in self.inner.iter_mut() {
             Self::kan(service_context.clone(), Rc::clone(&self.states), || {
                 hook.tx_hook_after_(service_context.clone())
+            })
+            .map_err(|e| {
+                log::error!("executor: tx_after_hook_err{}", e);
+                ProtocolError::from(ExecutorError::TxAfter)
             })?;
         }
 
@@ -266,6 +286,10 @@ impl<S: 'static + Storage, DB: 'static + TrieDB, Mapping: 'static + ServiceMappi
         self.states.revert_cache()
     }
 
+    fn revert_stash(&mut self) -> ProtocolResult<()> {
+        self.states.revert_stash()
+    }
+
     #[muta_apm::derive::tracing_span(
         kind = "executor.before_hook",
         tags = "{'hook_type': 'hook_type'}"
@@ -371,6 +395,9 @@ impl<S: 'static + Storage, DB: 'static + TrieDB, Mapping: 'static + ServiceMappi
         }
     }
 
+    // return ServiceResponse<String> for success
+    // return error for tx run error, it will try to deduce fee
+    // it must stash state
     fn catch_call(
         &mut self,
         context: Context,
@@ -378,8 +405,23 @@ impl<S: 'static + Storage, DB: 'static + TrieDB, Mapping: 'static + ServiceMappi
         exec_type: ExecType,
     ) -> ProtocolResult<ServiceResponse<String>> {
         let mut tx_hooks = self.get_tx_hooks(exec_type);
+        let tx_hash = service_context
+            .get_tx_hash()
+            .unwrap_or(Hash::default())
+            .as_hex();
 
-        tx_hooks.before(context.clone(), service_context.clone())?;
+        // this may throw Cancelled
+        let tx_before = tx_hooks.before(context.clone(), service_context.clone());
+
+        if tx_before.is_err() {
+            // try uttermost to deduce fee;
+            tx_hooks.after(context.clone(), service_context.clone()).map_err(|e| {
+                log::error!("tx {}, tx before hook error, skip exec and run after hook,  after hook error:{}", tx_hash, e);
+                e
+            });
+            self.stash()?;
+            tx_before?
+        }
 
         let ret = match panic::catch_unwind(AssertUnwindSafe(|| {
             self.call(service_context.clone(), exec_type)
@@ -395,8 +437,13 @@ impl<S: 'static + Storage, DB: 'static + TrieDB, Mapping: 'static + ServiceMappi
             }
         };
 
-        tx_hooks.after(context, service_context)?;
+        // whatever tx succeeds or fails, we try to do tx_after
+        let tx_after = tx_hooks.after(context, service_context);
+        self.stash()?;
 
+        if ret.is_ok() {
+            tx_after?;
+        }
         ret
     }
 
@@ -417,21 +464,37 @@ impl<S: 'static + Storage, DB: 'static + TrieDB, Mapping: 'static + ServiceMappi
             ExecType::Write => service.write_(context),
         }
     }
-}
 
-impl<S: 'static + Storage, DB: 'static + TrieDB, Mapping: 'static + ServiceMapping> Executor
-    for ServiceExecutor<S, DB, Mapping>
-{
-    #[muta_apm::derive::tracing_span(kind = "executor.exec", logs = "{'tx_len': 'txs.len()'}")]
-    fn exec(
+    // block hook before and after will throw error
+    fn try_exec(
         &mut self,
         ctx: Context,
         params: &ExecutorParams,
         txs: &[SignedTransaction],
-    ) -> ProtocolResult<ExecutorResp> {
-        self.hook(ctx.clone(), HookType::Before, params)?;
+    ) -> ProtocolResult<Vec<Receipt>> {
+        let blk_before = self
+            .hook(ctx.clone(), HookType::Before, params)
+            .map_err(|e| {
+                log::error!(
+                    "block {}, block before hook error:{}, skip block exec",
+                    params.height,
+                    e
+                );
+                ProtocolError::from(ExecutorError::BlockBefore)
+            });
 
-        let mut receipts = txs
+        // skip all txs and try do block_after
+        if blk_before.is_err() {
+            self.hook(ctx.clone(), HookType::After, params)
+                .map_err(|e| {
+                    log::error!("block {}, block after hook error:{}", params.height, e);
+                    ProtocolError::from(ExecutorError::BlockAfter)
+                });
+            blk_before?
+        }
+
+        // this should pop errors
+        let mut receipts: Vec<Receipt> = txs
             .iter()
             .map(|stx| {
                 let service_context = self.get_context(
@@ -444,44 +507,93 @@ impl<S: 'static + Storage, DB: 'static + TrieDB, Mapping: 'static + ServiceMappi
                     &stx.raw.request,
                 )?;
 
-                let exec_resp =
-                    self.catch_call(ctx.clone(), service_context.clone(), ExecType::Write)?;
-                let events = if exec_resp.is_error() {
-                    Vec::new()
-                } else {
-                    service_context.get_events()
-                };
+                match self.catch_call(ctx.clone(), service_context.clone(), ExecType::Write) {
+                    Err(e) => Ok(Receipt {
+                        state_root:  MerkleRoot::from_empty(),
+                        height:      service_context.get_current_height(),
+                        tx_hash:     stx.tx_hash.clone(),
+                        cycles_used: service_context.get_cycles_used(),
+                        events:      Vec::new(),
+                        response:    ReceiptResponse {
+                            service_name: service_context.get_service_name().to_owned(),
+                            method:       service_context.get_service_method().to_owned(),
+                            response:     ServiceResponse::default(),
+                        },
+                    }),
+                    Ok(service_resp) => {
+                        let events = if service_resp.is_error() {
+                            Vec::new()
+                        } else {
+                            service_context.get_events()
+                        };
 
-                Ok(Receipt {
-                    state_root: MerkleRoot::from_empty(),
-                    height: service_context.get_current_height(),
-                    tx_hash: stx.tx_hash.clone(),
-                    cycles_used: service_context.get_cycles_used(),
-                    events,
-                    response: ReceiptResponse {
-                        service_name: service_context.get_service_name().to_owned(),
-                        method:       service_context.get_service_method().to_owned(),
-                        response:     exec_resp,
-                    },
-                })
+                        Ok(Receipt {
+                            state_root: MerkleRoot::from_empty(),
+                            height: service_context.get_current_height(),
+                            tx_hash: stx.tx_hash.clone(),
+                            cycles_used: service_context.get_cycles_used(),
+                            events,
+                            response: ReceiptResponse {
+                                service_name: service_context.get_service_name().to_owned(),
+                                method:       service_context.get_service_method().to_owned(),
+                                response:     service_resp,
+                            },
+                        })
+                    }
+                }
             })
             .collect::<Result<Vec<Receipt>, ProtocolError>>()?;
 
-        self.hook(ctx.clone(), HookType::After, params)?;
+        self.hook(ctx.clone(), HookType::After, params)
+            .map_err(|e| {
+                log::error!("block {}, block after hook error:{}", params.height, e);
+                ProtocolError::from(ExecutorError::BlockAfter)
+            })?;
 
-        let state_root = self.commit(ctx)?;
-        let mut all_cycles_used = 0;
+        Ok(receipts)
+    }
+}
 
-        for receipt in receipts.iter_mut() {
-            receipt.state_root = state_root.clone();
-            all_cycles_used += receipt.cycles_used;
+impl<S: 'static + Storage, DB: 'static + TrieDB, Mapping: 'static + ServiceMapping> Executor
+    for ServiceExecutor<S, DB, Mapping>
+{
+    #[muta_apm::derive::tracing_span(kind = "executor.exec", logs = "{'tx_len': 'txs.len()'}")]
+    fn exec(
+        &mut self,
+        ctx: Context,
+        params: &ExecutorParams,
+        txs: &[SignedTransaction],
+    ) -> ProtocolResult<ExecutorResp> {
+        match self.try_exec(ctx.clone(), params, txs) {
+            Err(err) => {
+                log::error!("executor exec block hook fails");
+                // drop all data and revert receipts to non,
+                self.revert_stash()?;
+                let receipts: Vec<Receipt> = Vec::new();
+                let state_root = self.commit(ctx)?;
+                Ok(ExecutorResp {
+                    receipts,
+                    all_cycles_used: 0u64,
+                    state_root,
+                })
+            }
+
+            Ok(mut receipts) => {
+                let state_root = self.commit(ctx)?;
+                let mut all_cycles_used = 0;
+
+                for receipt in receipts.iter_mut() {
+                    receipt.state_root = state_root.clone();
+                    all_cycles_used += receipt.cycles_used;
+                }
+
+                Ok(ExecutorResp {
+                    receipts,
+                    all_cycles_used,
+                    state_root,
+                })
+            }
         }
-
-        Ok(ExecutorResp {
-            receipts,
-            all_cycles_used,
-            state_root,
-        })
     }
 
     fn read(
@@ -514,36 +626,5 @@ impl<S: 'static + Storage, DB: 'static + TrieDB, Mapping: 'static + ServiceMappi
 
     fn write(&self, context: ServiceContext) -> ServiceResponse<String> {
         self.call(context, ExecType::Write)
-    }
-}
-
-#[derive(Debug, Display)]
-pub enum ExecutorError {
-    #[display(fmt = "service {:?} was not found", service)]
-    NotFoundService { service: String },
-    #[display(fmt = "service {:?} method {:?} was not found", service, method)]
-    NotFoundMethod { service: String, method: String },
-    #[display(fmt = "Parsing payload to json failed {:?}", _0)]
-    JsonParse(serde_json::Error),
-
-    #[display(fmt = "Init service genesis failed: {:?}", _0)]
-    InitService(String),
-    #[display(fmt = "Query service failed: {:?}", _0)]
-    QueryService(String),
-    #[display(fmt = "Call service failed: {:?}", _0)]
-    CallService(String),
-
-    #[display(fmt = "service {} canceled {:?}", service, reason)]
-    Canceled {
-        service: String,
-        reason:  Option<String>,
-    },
-}
-
-impl std::error::Error for ExecutorError {}
-
-impl From<ExecutorError> for ProtocolError {
-    fn from(err: ExecutorError) -> ProtocolError {
-        ProtocolError::new(ProtocolErrorKind::Executor, Box::new(err))
     }
 }

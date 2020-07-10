@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
+use log::error;
 use overlord::types::{Node, OverlordMsg, Vote, VoteType};
 use overlord::{extract_voters, Crypto, OverlordHandler};
 use parking_lot::RwLock;
@@ -147,6 +148,9 @@ where
         };
 
         let mut tx = self.exec_queue.clone();
+
+        log::error!("exec_queue send: {}", exec_info.height);
+
         tx.try_send(exec_info).map_err(|e| match e {
             TrySendError::Closed(_) => panic!("exec queue dropped!"),
             _ => ConsensusError::ExecuteErr(e.to_string()),
@@ -896,6 +900,8 @@ where
 
     async fn process(&mut self) -> ProtocolResult<()> {
         if let Some(info) = self.queue.recv().await {
+            log::error!("exec_daemon receive: {}", info.height);
+
             self.exec(info.ctx.clone(), info).await
         } else {
             Err(ConsensusError::Other("Queue disconnect".to_string()).into())
@@ -944,6 +950,8 @@ where
             now.elapsed(),
             resp.receipts.len(),
         );
+
+        log::error!("exec_daemon: get result: {}", exec_params.height);
         self.status.update_by_executed(gen_executed_info(
             info.ctx.clone(),
             resp.clone(),

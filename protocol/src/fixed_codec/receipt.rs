@@ -25,7 +25,6 @@ impl rlp::Decodable for ReceiptResponse {
         let error_message = r.at(2)?.as_val()?;
         let method = r.at(3)?.as_val()?;
         let service_name = r.at(4)?.as_val()?;
-
         Ok(ReceiptResponse {
             service_name,
             method,
